@@ -9,12 +9,8 @@ import numpy as np
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 
-# Production-safe YOLO import (for Render memory limits)
-try:
-    from ultralytics import YOLO
-except ImportError:
-    YOLO = None
-    print("[AI] ⚠️ YOLO (ultralytics) not installed. Running in sensor-only mode.")
+# Production-safe YOLO import
+from ultralytics import YOLO
 
 from config import Config
 from utils.helpers import haversine, is_duplicate
@@ -33,25 +29,19 @@ model = None
 def load_model():
     global model
     
-    if YOLO is None:
-        print("[AI] ⚠️ YOLO disabled in production (import failed).")
-        return None
-
     if model is None:
         print("🚀 Loading YOLO model...")
-        # Path logic: look for best.pt in the root directory
-        model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'best.pt')
+        model_path = "models/best.pt"
         
         if not os.path.exists(model_path):
-            print(f"❌ MODEL NOT FOUND at {model_path}. AI disabled.")
-            return None
+            raise FileNotFoundError(f"❌ MODEL NOT FOUND at {model_path}. Please ensure it exists.")
             
         try:
             model = YOLO(model_path)
             print("✅ YOLO Model loaded successfully")
         except Exception as e:
-            print(f"❌ Error loading YOLO: {e}. Falling back to sensor-only mode.")
-            return None
+            print(f"❌ Error loading YOLO: {e}")
+            raise e
     return model
 
 
@@ -350,7 +340,7 @@ def run_inference(m, img: np.ndarray) -> tuple:
 
     try:
         start = time.time()
-        results = m.predict(source=img, conf=0.4, imgsz=640, verbose=False)
+        results = m.predict(source=img, conf=0.5, iou=0.45, imgsz=640, device="cpu", verbose=False)
         elapsed = (time.time() - start) * 1000
         print(f"[AI] Inference: {elapsed:.0f}ms")
         h, w = img.shape[:2]
@@ -710,8 +700,8 @@ def user_report():
 
     if ai_available:
         try:
-            # Higher-quality inference configuration for user uploads.
-            results = m.predict(source=img, conf=0.5, imgsz=960, verbose=False)
+            # Lightweight inference configuration for Render deployment.
+            results = m.predict(source=img, conf=0.5, iou=0.45, imgsz=640, device="cpu", verbose=False)
             for r in (results or []):
                 if r.boxes is None:
                     continue
