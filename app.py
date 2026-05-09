@@ -31,7 +31,7 @@ bcrypt = Bcrypt()
 
 def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB limit
     
     # Enable CORS for all routes (important for deployment)
     CORS(app)

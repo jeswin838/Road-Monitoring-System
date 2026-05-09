@@ -864,7 +864,8 @@ def user_report():
     image_url = f"{Config.SUPABASE_URL}/storage/v1/object/public/pothole-images/{original_filename}"
     annotated_image_url = f"{Config.SUPABASE_URL}/storage/v1/object/public/pothole-images/{annotated_filename}"
 
-    return jsonify({
+    # Determine response message based on status
+    response_payload = {
         "upload_id": base_name,
         "status": status,
         "ai_status": status,
@@ -891,7 +892,11 @@ def user_report():
         "annotated_image_url": annotated_image_url,
         "latitude": lat_f,
         "longitude": lon_f
-    })
+    }
+    if status == "rejected" and not pothole_detected:
+        response_payload["message"] = "not detected anything"
+    return jsonify(response_payload)
+
 
 
 @ai_bp.route("/user-report/submit", methods=["POST"])
