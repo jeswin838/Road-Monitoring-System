@@ -8,8 +8,6 @@ gunicorn
 flask-cors
 opencv-python-headless
 numpy
-
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.2+cpu
-torchvision==0.17.2+cpu
+torch
+torchvision
 ultralytics==8.3.0
