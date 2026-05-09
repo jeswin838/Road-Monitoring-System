@@ -13,6 +13,19 @@ def get_supabase():
     return supabase
 
 # -----------------------------------------------------------------------------
+# POST /api/sensor-trigger (ESP32)
+# -----------------------------------------------------------------------------
+@api_bp.route("/sensor-trigger", methods=["POST"])
+def sensor_trigger():
+    data = request.get_json(silent=True) or {}
+    print(f"[ESP32] Sensor trigger received: {data}")
+    return jsonify({
+        "status": "success",
+        "message": "ESP32 trigger received"
+    })
+
+
+# -----------------------------------------------------------------------------
 # GET /api/location-reports?lat=...&lon=...
 # -----------------------------------------------------------------------------
 @api_bp.route("/location-reports", methods=["GET"], strict_slashes=False)
