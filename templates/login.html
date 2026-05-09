@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Auth — PotholePro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"/>
+  <style>
+    .auth-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .auth-tab { flex: 1; padding: 12px; font-size: .9rem; font-weight: 600; color: var(--muted); cursor: pointer; text-align: center; border-bottom: 2px solid transparent; transition: all .2s; }
+    .auth-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .auth-form { display: none; text-align: left; animation: fadeIn .3s; }
+    .auth-form.active { display: block; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    @media (max-width: 480px) {
+      .login-card { padding: 24px 20px; }
+      .login-container { padding: 12px; }
+    }
+  </style>
+</head>
+<body class="login-body">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-logo"><i class="fa-solid fa-road"></i></div>
+      <h2 class="login-title">PotholePro</h2>
+      <p class="login-subtitle">Smart Monitoring Platform</p>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" onclick="showForm('login')">Login</div>
+        <div class="auth-tab" onclick="showForm('register')">Register</div>
+      </div>
+
+      <div id="authError" class="alert-error" style="display:none"></div>
+      <div id="authSuccess" class="alert-success" style="display:none"></div>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="auth-form active">
+        <div class="form-group">
+          <label><i class="fa-solid fa-envelope"></i> Email</label>
+          <input type="email" id="lEmail" class="form-input" placeholder="Enter email" required/>
+        </div>
+        <div class="form-group">
+          <label><i class="fa-solid fa-lock"></i> Password</label>
+          <input type="password" id="lPass" class="form-input" placeholder="••••••••" required/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="lBtn">
+          <i class="fa-solid fa-right-to-bracket"></i> Sign In
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="registerForm" class="auth-form">
+        <div class="form-group">
+          <label><i class="fa-solid fa-user"></i> Full Name</label>
+          <input type="text" id="rName" class="form-input" placeholder="Your name" required/>
+        </div>
+        <div class="form-group">
+          <label><i class="fa-solid fa-envelope"></i> Email</label>
+          <input type="email" id="rEmail" class="form-input" placeholder="Email address" required/>
+        </div>
+        <div class="form-group">
+          <label><i class="fa-solid fa-lock"></i> Password</label>
+          <input type="password" id="rPass" class="form-input" placeholder="Create password" required/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="rBtn">
+          <i class="fa-solid fa-user-plus"></i> Join Platform
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function showForm(type) {
+      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(type + 'Form').classList.add('active');
+      event.target.classList.add('active');
+      document.getElementById('authError').style.display = 'none';
+    }
+
+    const showError = (msg) => {
+      const err = document.getElementById('authError');
+      const succ = document.getElementById('authSuccess');
+      succ.style.display = 'none';
+      err.textContent = msg;
+      err.style.display = 'block';
+    };
+
+    const showSuccess = (msg) => {
+      const succ = document.getElementById('authSuccess');
+      const err = document.getElementById('authError');
+      err.style.display = 'none';
+      succ.textContent = msg;
+      succ.style.display = 'block';
+    };
+
+    // LOGIN
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('lBtn');
+      const originalHtml = btn.innerHTML;
+      
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in...';
+      document.getElementById('authError').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/login', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ 
+            email: document.getElementById('lEmail').value, 
+            password: document.getElementById('lPass').value 
+          })
+        });
+        const data = await res.json();
+        
+        if(res.ok) {
+          showSuccess("Login successful! Redirecting...");
+          btn.innerHTML = '<i class="fa-solid fa-check"></i> Success';
+          setTimeout(() => { window.location.href = '/'; }, 600);
+        } else {
+          showError(data.error || "Invalid credentials");
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      } catch (err) {
+        showError("Network error. Please try again.");
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
+
+    // REGISTER
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('rBtn');
+      const originalHtml = btn.innerHTML;
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating account...';
+      document.getElementById('authError').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/register', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            name:     document.getElementById('rName').value,
+            email:    document.getElementById('rEmail').value,
+            password: document.getElementById('rPass').value
+          })
+        });
+        const data = await res.json();
+        
+        if(res.ok) {
+          showSuccess("Account created! Logging you in...");
+          btn.innerHTML = '<i class="fa-solid fa-check"></i> Welcome';
+          
+          // Auto login after register
+          await fetch('/api/login', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ email: document.getElementById('rEmail').value, password: document.getElementById('rPass').value })
+          });
+          
+          setTimeout(() => { window.location.href = '/'; }, 800);
+        } else {
+          showError(data.error || "Registration failed");
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      } catch (err) {
+        showError("Network error. Please try again.");
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    });
+  </script>
+</body>
+</html>

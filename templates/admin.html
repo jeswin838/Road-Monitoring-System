@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Admin — Pothole Monitor{% endblock %}
+{% block page_title %}User Management{% endblock %}
+
+{% block head %}
+<style>
+.admin-grid { display: grid; grid-template-columns: 1fr 340px; gap: 18px; }
+.user-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+.user-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.user-table th { text-align: left; padding: 10px; font-size: .75rem; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.user-table td { padding: 12px 10px; font-size: .85rem; border-bottom: 1px solid var(--border); }
+.user-table tr:last-child td { border-bottom: none; }
+
+@media (max-width: 1024px) {
+  .admin-grid { grid-template-columns: 1fr; }
+  .user-card { padding: 16px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-grid">
+  <div class="user-card glass-card">
+    <div class="card-header" style="margin-bottom:14px">
+      <h3><i class="fa-solid fa-users" style="color:var(--accent)"></i> System Users</h3>
+      <button class="btn btn-secondary btn-xs" onclick="loadUsers()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+    </div>
+    <div class="table-responsive">
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="userList">
+          <tr><td colspan="4" class="text-center" style="color:var(--muted)">Loading users…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="user-card glass-card">
+    <h3><i class="fa-solid fa-user-plus" style="color:var(--success)"></i> Add New User</h3>
+    <form id="addUserForm" style="margin-top:14px">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="uName" class="form-input" placeholder="e.g. John Doe" required/>
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="uEmail" class="form-input" placeholder="user@pothole.local" required/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="uPass" class="form-input" placeholder="••••••••" required/>
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="uRole" class="form-input">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" style="margin-top:10px">
+        <i class="fa-solid fa-plus"></i> Create User
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Custom Delete User Modal -->
+<div class="modal-overlay" id="confirmDeleteUserModal" style="display:none">
+  <div class="modal-box" style="max-width:340px; text-align:center">
+    <div class="modal-header">
+      <h3 style="color:var(--danger)"><i class="fa-solid fa-user-slash"></i> Confirm Delete</h3>
+      <button class="modal-close" onclick="closeDeleteUserModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:10px 0; color:var(--muted)">Are you sure you want to remove this user? This will revoke their access immediately.</p>
+    </div>
+    <div class="modal-footer" style="flex-direction:column; gap:8px">
+      <button class="btn btn-danger btn-full" onclick="confirmDeleteUser()">Delete User</button>
+      <button class="btn btn-secondary btn-full" onclick="closeDeleteUserModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadUsers() {
+  const res = await fetch('/api/users');
+  const users = await res.json();
+  const container = document.getElementById('userList');
+  if(!users.length) {
+    container.innerHTML = '<tr><td colspan="4" class="text-center" style="color:var(--muted)">No users found</td></tr>';
+    return;
+  }
+  container.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${u.name}</strong></td>
+      <td style="color:var(--muted)">${u.email}</td>
+      <td><span class="badge ${u.role==='admin'?'badge-accent':'badge-neutral'}">${u.role}</span></td>
+      <td style="text-align:right">
+        <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id})"><i class="fa-solid fa-trash"></i></button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const payload = {
+    name:     document.getElementById('uName').value,
+    email:    document.getElementById('uEmail').value,
+    password: document.getElementById('uPass').value,
+    role:     document.getElementById('uRole').value,
+  };
+  const res = await fetch('/api/create-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if(res.ok) {
+    showToast('User created ✓', 'success');
+    e.target.reset();
+    loadUsers();
+  } else {
+    const err = await res.json();
+    showToast(err.error || 'Failed to create user', 'error');
+  }
+});
+
+let userToDelete = null;
+
+function deleteUser(id) {
+  userToDelete = id;
+  const modal = document.getElementById('confirmDeleteUserModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeDeleteUserModal() {
+  userToDelete = null;
+  const modal = document.getElementById('confirmDeleteUserModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function confirmDeleteUser() {
+  if(!userToDelete) return;
+  const res = await fetch(`/api/users/${userToDelete}`, { method:'DELETE' });
+  if(res.ok) {
+    showToast('User removed', 'info');
+    closeDeleteUserModal();
+    loadUsers();
+  } else {
+    showToast('Failed to delete user', 'error');
+  }
+}
+
+loadUsers();
+</script>
+{% endblock %}

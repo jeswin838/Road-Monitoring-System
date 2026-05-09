@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Report Pothole — PotholePro{% endblock %}
+{% block page_title %}Report New Pothole{% endblock %}
+
+{% block head %}
+<style>
+.report-container {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  height: calc(100vh - var(--topbar-h) - 40px);
+}
+
+.camera-card {
+  background: #000;
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+}
+
+#cameraStream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#capturedPreview {
+  width: 100%;
+  height: 100%;
+  max-width: 300px;
+  object-fit: contain;
+  display: none;
+}
+
+.camera-controls {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 15px;
+  z-index: 10;
+}
+
+.capture-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  background: rgba(255,255,255,0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+
+.capture-btn:hover { transform: scale(1.1); }
+.capture-btn:active { transform: scale(0.9); }
+.capture-btn i { font-size: 24px; color: #fff; }
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.gps-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-size: 0.85rem;
+}
+
+.gps-status.searching {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning);
+}
+
+.gps-status.ready {
+  color: var(--success);
+}
+
+
+
+.analyze-result {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 14px;
+  display: none;
+}
+
+.result-badge {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+@media (max-width: 1024px) {
+  .report-container { grid-template-columns: 1fr; height: auto; display: flex; flex-direction: column; }
+  .camera-card { height: 450px; flex-shrink: 0; }
+  .side-panel { padding-bottom: 20px; }
+}
+@media (max-width: 480px) {
+  .camera-card { height: 320px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-container">
+  <!-- Left: Camera Preview -->
+  <div class="camera-card">
+    <video id="cameraStream" autoplay playsinline muted></video>
+    <img id="capturedPreview" alt="Captured Pothole"/>
+    
+    <div class="camera-controls">
+      <button class="btn btn-secondary btn-circle" id="retakeBtn" style="display:none" title="Retake">
+        <i class="fa-solid fa-rotate-left"></i>
+      </button>
+      <button class="capture-btn" id="captureBtn">
+        <i class="fa-solid fa-camera"></i>
+      </button>
+      <button class="btn btn-primary btn-circle" id="switchCameraBtn" title="Switch Camera">
+        <i class="fa-solid fa-camera-rotate"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Right: Form & GPS -->
+  <div class="side-panel">
+    <div class="form-card">
+      <div id="gpsStatus" class="gps-status searching">
+        <i class="fa-solid fa-location-crosshairs fa-spin"></i>
+        <span>Acquiring GPS Location...</span>
+      </div>
+
+      <div class="form-group">
+        <label>Latitude</label>
+        <input type="text" id="latInput" class="form-input" placeholder="0.00000" readonly/>
+      </div>
+      <div class="form-group">
+        <label>Longitude</label>
+        <input type="text" id="lonInput" class="form-input" placeholder="0.00000" readonly/>
+      </div>
+      <div class="form-group">
+        <label>Description (Optional)</label>
+        <textarea id="descInput" class="form-input" rows="3" placeholder="Describe the pothole or location details..."></textarea>
+      </div>
+
+
+
+      <button id="analyzeBtn" class="btn btn-primary btn-full" disabled style="padding: 14px; margin-bottom:8px">
+        <i class="fa-solid fa-magnifying-glass"></i> Analyze
+      </button>
+      <button id="submitBtn" class="btn btn-secondary btn-full" disabled style="padding: 14px">
+        <i class="fa-solid fa-paper-plane"></i> Submit Report
+      </button>
+
+      <div id="analyzeResultCard" class="analyze-result">
+        <img id="resultPreviewImage" alt="Analyzed preview" style="width:100%; border-radius:8px; margin-bottom:8px; display:none;" />
+        <div id="resultStatusBadge" class="result-badge">PENDING</div>
+        <div id="resultMeta" style="font-size:0.82rem; margin-top:8px; color:var(--muted)"></div>
+      </div>
+    </div>
+
+    <div class="form-card" style="font-size: 0.8rem; color: var(--muted)">
+      <p><i class="fa-solid fa-circle-info" style="margin-right: 5px"></i> Tips for a good report:</p>
+      <ul style="margin-top: 8px; margin-left: 15px">
+        <li>Ensure the pothole is clearly visible.</li>
+        <li>Stand 2-3 meters back if possible.</li>
+        <li>Make sure your GPS is enabled for accuracy.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.REPORT_SECURITY = {
+    strictLiveCaptureOnly: {{ 'true' if strict_live_capture_only else 'false' }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/report.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Safe Navigation — PotholePro{% endblock %}
+{% block page_title %}Safe Route Navigation{% endblock %}
+
+{% block head %}
+<style>
+/* ── Navigation Page Layout ─────────────────────────────────────────────── */
+.nav-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 16px;
+  height: calc(100vh - var(--topbar-h) - 36px);
+}
+
+/* ── Control Panel ──────────────────────────────────────────────────────── */
+.nav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.panel-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+
+.panel-card h3 {
+  font-size: .9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* ── Location inputs ────────────────────────────────────────────────────── */
+.location-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.location-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-start { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.dot-end   { background: var(--danger);  box-shadow: 0 0 6px var(--danger); }
+
+.location-input-wrap .form-input {
+  flex: 1;
+  padding-right: 36px;
+}
+
+.clear-input-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: .8rem;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.clear-input-btn:hover { color: var(--danger); }
+
+.divider-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: .7rem;
+}
+.divider-line::before, .divider-line::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Route Status Card ──────────────────────────────────────────────────── */
+#routeStatus { display: none; }
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .82rem;
+}
+.status-row:last-child { border-bottom: none; }
+.status-label { color: var(--muted); }
+.status-value { font-weight: 600; }
+
+.safe-badge     { color: var(--success); }
+.moderate-badge { color: var(--warning); }
+.unsafe-badge   { color: var(--danger); }
+
+/* ── Legend ─────────────────────────────────────────────────────────────── */
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .8rem;
+  color: var(--muted);
+  padding: 5px 0;
+}
+.legend-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: .85;
+}
+.legend-line {
+  width: 24px; height: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Map container ──────────────────────────────────────────────────────── */
+#navMap {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  background: var(--surface);
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Route info banner ─────────────────────────────────────────────────── */
+#routeBanner {
+  display: none;
+  position: absolute;
+  bottom: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 800;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: .85rem;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  white-space: nowrap;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .nav-layout { grid-template-columns: 1fr; height: auto; }
+  #navMap { height: 450px; }
+}
+
+/* Leaflet dark map tiles helper */
+.leaflet-container { background: #1a1f27; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nav-layout">
+
+  <!-- ── LEFT PANEL ─────────────────────────────────────────────────────── -->
+  <div class="nav-panel">
+
+    <!-- Location Picker -->
+    <div class="panel-card">
+      <h3><i class="fa-solid fa-location-dot" style="color:var(--accent)"></i> Set Locations</h3>
+
+      <!-- Hint -->
+      <p style="font-size:.75rem;color:var(--muted);margin-bottom:12px">
+        Click the map to place markers, or use the fields below.
+      </p>
+
+      <!-- Start -->
+      <label style="font-size:.75rem;color:var(--muted);font-weight:500">📍 Start Point</label>
+      <div class="location-input-wrap" style="margin-top:5px">
+        <div class="location-dot dot-start"></div>
+        <input id="startInput" class="form-input" placeholder="Click map or enter lat,lon"/>
+        <button class="clear-input-btn" onclick="clearPoint('start')" title="Clear">✕</button>
+      </div>
+
+      <div class="divider-line">via safest road</div>
+
+      <!-- End -->
+      <label style="font-size:.75rem;color:var(--muted);font-weight:500">🏁 Destination</label>
+      <div class="location-input-wrap" style="margin-top:5px">
+        <div class="location-dot dot-end"></div>
+        <input id="endInput" class="form-input" placeholder="Click map or enter lat,lon"/>
+        <button class="clear-input-btn" onclick="clearPoint('end')" title="Clear">✕</button>
+      </div>
+
+      <!-- Map click mode toggle -->
+      <div style="display:flex;gap:8px;margin:14px 0 0">
+        <button id="modeStart" class="btn btn-success btn-xs" onclick="setClickMode('start')">
+          <i class="fa-solid fa-crosshairs"></i> Set Start
+        </button>
+        <button id="modeEnd" class="btn btn-danger btn-xs" onclick="setClickMode('end')">
+          <i class="fa-solid fa-crosshairs"></i> Set End
+        </button>
+        <button class="btn btn-secondary btn-xs" onclick="useMyLocation()" title="Use GPS">
+          <i class="fa-solid fa-location-arrow"></i> My Location
+        </button>
+      </div>
+    </div>
+
+    <!-- Find Route Button -->
+    <button id="findRouteBtn" class="btn btn-primary btn-full" onclick="findSafeRoute()" style="padding:12px">
+      <i class="fa-solid fa-shield-halved"></i> Find Safe Route
+    </button>
+
+    <!-- Route Status (hidden until route calculated) -->
+    <div class="panel-card" id="routeStatus">
+      <h3><i class="fa-solid fa-chart-simple" style="color:var(--accent)"></i> Route Summary</h3>
+      <div class="status-row">
+        <span class="status-label">Safety Status</span>
+        <span class="status-value" id="safetyBadge">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Potholes on Route</span>
+        <span class="status-value" id="potholesOnPath">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Risk Score</span>
+        <span class="status-value" id="riskValue">0%</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Danger Zones Avoided</span>
+        <span class="status-value" id="avoidedCount">—</span>
+      </div>
+      <div id="routeWarningBox" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;font-size:.8rem"></div>
+    </div>
+
+    <!-- Legend -->
+    <div class="panel-card">
+      <h3><i class="fa-solid fa-circle-info" style="color:var(--muted)"></i> Map Legend</h3>
+      <div class="legend-row"><div class="legend-dot" style="background:#ef4444"></div> High Severity Pothole</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#f59e0b"></div> Medium Severity Pothole</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#22c55e"></div> Low Severity Pothole</div>
+      
+      <div class="legend-row" style="margin-top:10px"><div class="legend-line" style="background:#22c55e"></div> Safe Route (No potholes)</div>
+      <div class="legend-row"><div class="legend-line" style="background:#f59e0b"></div> Moderate Route (Small risks)</div>
+      <div class="legend-row"><div class="legend-line" style="background:#ef4444"></div> Unsafe Route (High risks)</div>
+      
+      <div class="legend-row" style="margin-top:12px;color:var(--muted);font-size:.72rem">
+        <i class="fa-solid fa-rotate" style="margin-right:4px"></i>
+        Pothole data refreshes every 12 seconds
+      </div>
+    </div>
+
+  </div><!-- /left panel -->
+
+  <!-- ── MAP ──────────────────────────────────────────────────────────────── -->
+  <div style="position:relative">
+    <div id="navMap"></div>
+    <div id="routeBanner"></div>
+  </div>
+
+</div>
+
+<!-- Reports Viewer Modal -->
+<div id="reportsModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:10000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px)">
+  <div class="glass-card" style="width:100%; max-width:800px; max-height:90vh; display:flex; flex-direction:column; padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1)">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+      <h3 style="font-size:1.2rem; font-weight:700"><i class="fa-solid fa-images" style="color:var(--accent)"></i> Location Reports</h3>
+      <button onclick="closeReportsModal()" style="background:none; border:none; color:var(--text); font-size:1.5rem; cursor:pointer">&times;</button>
+    </div>
+    <div id="reportsContainer" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; overflow-y:auto; flex:1; padding-right:8px">
+      <div style="grid-column:1/-1; text-align:center; padding:40px; color:var(--muted)">Loading reports...</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+{% endblock %}

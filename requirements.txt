@@ -1,0 +1,10 @@
+Flask
+supabase
+Werkzeug
+python-dotenv
+flask-bcrypt
+requests
+gunicorn
+flask-cors
+opencv-python-headless
+numpy

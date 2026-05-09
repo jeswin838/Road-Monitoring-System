@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% block title %}Image Logs — Pothole Monitor{% endblock %}
+{% block page_title %}Image Logs{% endblock %}
+
+{% block head %}
+<style>
+.img-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+.img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.img-tile { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .22s, box-shadow .22s; position: relative; }
+.img-tile:hover { transform: translateY(-5px); box-shadow: 0 15px 35px rgba(0,0,0,.4); }
+.img-tile img { width: 100%; height: 170px; object-fit: cover; display: block; transition: transform .3s; }
+.img-tile:hover img { transform: scale(1.05); }
+.img-tile .img-no-image { width: 100%; height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface); color: var(--muted); font-size: 2rem; text-align: center; }
+.img-info { padding: 12px; }
+.img-info .img-title { font-size: .85rem; font-weight: 700; margin-bottom: 4px; color: var(--text); }
+.img-info .img-sub  { font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.img-info .img-sub i { width: 14px; text-align: center; color: var(--accent); opacity: 0.8; }
+
+.source-tag { position: absolute; top: 10px; right: 10px; padding: 4px 8px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; z-index: 10; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); }
+.source-ai { background: rgba(99, 102, 241, 0.8); color: #fff; }
+.source-citizen { background: rgba(139, 92, 246, 0.8); color: #fff; }
+
+.status-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); margin-left: auto; }
+.status-dot-active { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+.status-dot-idle { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+
+.pagination {
+  margin-top: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-btn {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  min-width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.page-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.page-info {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 10px;
+  font-weight: 500;
+}
+
+@media (max-width: 500px) {
+  .hide-mobile { display: none; }
+  .pagination { gap: 6px; }
+  .page-btn { min-width: 36px; height: 36px; border-radius: 8px; }
+}
+
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(10px); }
+.lightbox.active { display: flex; animation: fadeIn .3s; }
+.lightbox img, .lightbox video { max-width: 90vw; max-height: 80vh; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.lightbox-meta { color: #fff; margin-top: 20px; text-align: center; background: rgba(255,255,255,0.05); padding: 12px 24px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.1); }
+.lightbox-close { position: absolute; top: 30px; right: 30px; color: #fff; font-size: 2.5rem; cursor: pointer; background: none; border: none; transition: transform .2s; }
+.lightbox-close:hover { transform: scale(1.1); color: var(--danger); }
+
+@media (max-width: 768px) {
+  .img-toolbar { flex-direction: column; align-items: stretch; }
+  .img-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .img-tile img, .img-tile .img-no-image { height: 130px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="img-toolbar glass-card" style="padding:16px; border-radius:16px;">
+  <div class="form-group" style="margin:0; min-width:140px">
+    <label>Source</label>
+    <select id="imgSource" class="form-input" onchange="renderGrid()">
+      <option value="">All Sources</option>
+      <option value="AI">AI Detection</option>
+      <option value="Citizen">User Report</option>
+    </select>
+  </div>
+  <div class="form-group" style="margin:0; min-width:140px">
+    <label>Type</label>
+    <select id="imgType" class="form-input" onchange="loadImages()">
+      <option value="">All Types</option>
+      <option value="pothole">Pothole</option>
+      <option value="crack">Crack</option>
+      <option value="Citizen Report">User Report</option>
+    </select>
+  </div>
+  <div class="form-group" style="margin:0; min-width:140px">
+    <label>Severity</label>
+    <select id="imgSeverity" class="form-input" onchange="loadImages()">
+      <option value="">All Severities</option>
+      <option>High</option><option>Medium</option><option>Low</option>
+    </select>
+  </div>
+  <div class="form-group" style="margin:0; min-width:140px">
+    <label>Date From</label>
+    <input type="date" id="imgDateFrom" class="form-input" onchange="loadImages()"/>
+  </div>
+  <div class="form-group" style="margin:0; flex:1">
+    <label>Search Location</label>
+    <div style="position:relative">
+        <i class="fa-solid fa-magnifying-glass" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:0.8rem"></i>
+        <input type="text" id="imgSearch" class="form-input" placeholder="Filter by lat/lon or ID…" oninput="renderGrid()" style="padding-left:32px"/>
+    </div>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end">
+    <div class="status-indicator">
+        <span id="refreshStatus">Auto-refresh Off</span>
+        <div id="refreshDot" class="status-dot-idle"></div>
+        <button class="btn btn-xs btn-secondary" onclick="toggleAutoRefresh()" id="refreshBtn" title="Toggle Auto-refresh">
+            <i class="fa-solid fa-sync"></i>
+        </button>
+    </div>
+    <span id="imgCount" class="badge badge-neutral">0 images</span>
+  </div>
+</div>
+
+<div class="img-grid" id="imgGrid">
+  <div class="no-images" style="grid-column:1/-1; padding:100px; text-align:center">
+    <i class="fa-solid fa-circle-notch fa-spin fa-3x" style="color:var(--accent); margin-bottom:16px"></i>
+    <p style="color:var(--muted)">Initialising image gallery...</p>
+  </div>
+</div>
+
+<div class="pagination" id="imgPagination"></div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+  <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+  <div id="lbContent" style="max-width:90vw; max-height:80vh; display:flex; align-items:center; justify-content:center"></div>
+  <div class="lightbox-meta" id="lbMeta"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let imgRecords = [];
+let curPage = 1, pageSize = 20;
+let refreshInterval = null;
+
+function isSameIncident(a, b) {
+  try {
+    const lat1 = parseFloat(a.latitude), lon1 = parseFloat(a.longitude);
+    const lat2 = parseFloat(b.latitude), lon2 = parseFloat(b.longitude);
+    if ([lat1, lon1, lat2, lon2].some(v => Number.isNaN(v))) return false;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const x = dLon * Math.cos(((lat1 + lat2) / 2) * Math.PI / 180);
+    const meters = Math.sqrt(x * x + dLat * dLat) * 6371000;
+    if (meters > 12) return false;
+
+    const t1 = new Date(a.created_at || 0).getTime();
+    const t2 = new Date(b.created_at || 0).getTime();
+    if (!t1 || !t2) return false;
+    return Math.abs(t1 - t2) <= 2 * 60 * 1000; // 2 minutes window
+  } catch (_) {
+    return false;
+  }
+}
+
+function mergeLogRecords(rows) {
+  const sorted = [...rows].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const merged = [];
+
+  for (const r of sorted) {
+    const existing = merged.find(m => {
+      if (m.upload_id && r.upload_id && m.upload_id === r.upload_id) return true;
+      if (m.report_id && r.report_id && String(m.report_id) === String(r.report_id)) return true;
+      return isSameIncident(m, r);
+    });
+    if (!existing) {
+      merged.push({ ...r });
+      continue;
+    }
+
+    const srcA = (existing.source || '').toLowerCase();
+    const srcB = (r.source || '').toLowerCase();
+    const isAIA = srcA === 'ai';
+    const isAIB = srcB === 'ai';
+
+    // Prefer AI media/details if present, but keep stronger status if available.
+    if (!isAIA && isAIB) {
+      existing.source = r.source;
+      existing.image_url = r.image_url || existing.image_url;
+      existing.media_url = r.media_url || existing.media_url;
+      existing.type = r.type || existing.type;
+      existing.id = r.id || existing.id;
+    }
+
+    const rank = { approved: 3, fixed: 3, rejected: 2, pending: 1 };
+    const curStatus = (existing.status || '').toLowerCase();
+    const newStatus = (r.status || '').toLowerCase();
+    if ((rank[newStatus] || 0) > (rank[curStatus] || 0)) {
+      existing.status = r.status;
+    }
+
+    const sevRank = { high: 3, medium: 2, low: 1 };
+    const curSev = (existing.severity || '').toLowerCase();
+    const newSev = (r.severity || '').toLowerCase();
+    if ((sevRank[newSev] || 0) > (sevRank[curSev] || 0)) {
+      existing.severity = r.severity;
+    }
+  }
+
+  return merged;
+}
+
+async function loadImages(isBackground = false) {
+  if (!isBackground) {
+    // Show spinner if not background refresh
+    if (imgRecords.length === 0) {
+        document.getElementById('imgGrid').innerHTML = '<div class="no-images" style="grid-column:1/-1; padding:100px; text-align:center"><i class="fa-solid fa-circle-notch fa-spin fa-3x" style="color:var(--accent); margin-bottom:16px"></i><p style="color:var(--muted)">Fetching latest logs...</p></div>';
+    }
+  }
+
+  try {
+    const type = document.getElementById('imgType').value;
+    const severity = document.getElementById('imgSeverity').value;
+    const date_from = document.getElementById('imgDateFrom').value;
+    
+    // Using all_reports=true to get everything from user_reports too
+    let url = `/api/potholes?dedupe=false&severity=${severity}&date_from=${date_from}&type=${type}&all_reports=true`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("API Error");
+    const data = await res.json();
+    
+    // Sort + merge same incident (AI + user duplicate rows -> single log row)
+    data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    imgRecords = mergeLogRecords(data);
+    
+    if (isBackground) {
+        // Flash refresh dot
+        const dot = document.getElementById('refreshDot');
+        dot.style.background = 'var(--accent)';
+        setTimeout(() => { dot.style.background = 'var(--success)'; }, 500);
+    }
+  } catch (e) {
+    console.error(e);
+    if (!isBackground) {
+        document.getElementById('imgGrid').innerHTML = '<div class="no-images" style="grid-column:1/-1; color:var(--danger); padding:60px; text-align:center"><i class="fa-solid fa-circle-exclamation fa-3x mb-3"></i><p>Failed to connect to data source.</p></div>';
+    }
+    return;
+  }
+  renderGrid();
+}
+
+function renderGrid() {
+  const search  = document.getElementById('imgSearch').value.toLowerCase();
+  const sourceFilter = document.getElementById('imgSource').value;
+  
+  const filtered = imgRecords.filter(r => {
+    const matchesSearch = !search || `${r.latitude} ${r.longitude} ${r.id} ${r.type}`.toLowerCase().includes(search);
+    const matchesSource = !sourceFilter || r.source === sourceFilter;
+    return matchesSearch && matchesSource;
+  });
+  
+  document.getElementById('imgCount').textContent = `${filtered.length} images`;
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  if (curPage > totalPages && totalPages > 0) curPage = totalPages;
+
+  const start = (curPage - 1) * pageSize;
+  const records = filtered.slice(start, start + pageSize);
+
+  const grid = document.getElementById('imgGrid');
+  if (!records.length) {
+    grid.innerHTML = '<div class="no-images" style="grid-column:1/-1; padding:100px; text-align:center"><i class="fa-solid fa-images fa-4x" style="margin-bottom:16px; opacity:0.2"></i><p style="color:var(--muted)">No images match your filters.</p></div>';
+    document.getElementById('imgPagination').innerHTML = '';
+    return;
+  }
+
+  grid.innerHTML = records.map(r => {
+    const mediaUrl = r.image_url || r.media_url;
+    const isVideo = (r.type && r.type.toLowerCase() === 'video') || (mediaUrl && mediaUrl.toLowerCase().endsWith('.mp4'));
+    const source = r.source || 'AI';
+    const lat = parseFloat(r.latitude);
+    const lon = parseFloat(r.longitude);
+    const fLat = isNaN(lat) ? '0.00000' : lat.toFixed(5);
+    const fLon = isNaN(lon) ? '0.00000' : lon.toFixed(5);
+    const timeStr = formatDt(r.created_at);
+
+    return `
+    <div class="img-tile" onclick="openLightbox('${mediaUrl}', ${r.id}, '${r.latitude}', '${r.longitude}', '${r.severity}', '${r.created_at}', '${isVideo ? 'video' : 'image'}')">
+      <div class="source-tag ${source === 'AI' ? 'source-ai' : 'source-citizen'}">
+        ${source}
+      </div>
+      
+      <div class="img-media-container" style="width:100%; height:170px; background:var(--surface); position:relative; overflow:hidden">
+        ${isVideo 
+          ? `<div class="img-no-image" style="background:#000; flex-direction:column; gap:10px">
+               <i class="fa-solid fa-play-circle fa-2x"></i>
+               <span style="font-size:0.7rem; opacity:0.7">Video Preview</span>
+             </div>`
+          : (mediaUrl
+              ? `<img src="${mediaUrl}" alt="Log #${r.id}" style="width:100%; height:100%; object-fit:cover" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\\'img-no-image\\' style=\\'height:100%; background:var(--surface); color:var(--muted)\\'><i class=\\'fa-solid fa-image-slash fa-xl\\'></i></div>';"/>`
+              : `<div class="img-no-image" style="height:100%; background:var(--surface)">
+                   <i class="fa-solid fa-image fa-xl" style="opacity:0.2"></i>
+                 </div>`)
+        }
+      </div>
+
+      <div class="img-info" style="color: #fff; padding: 15px">
+        <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 5px; color: #fff">#${r.id} ${r.type || 'Detection'}</div>
+        <div style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 3px">${fLat}, ${fLon}</div>
+        <div style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 8px">${timeStr}</div>
+         <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px">
+           <div style="text-transform: lowercase; font-size: 0.85rem; color: var(--accent); font-weight: 600">${r.severity || 'medium'}</div>
+           <div style="font-size: 0.85rem; color: #fff; font-weight: 500">${r.status || 'Pending'}</div>
+         </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  renderPagination(filtered.length);
+}
+
+function renderPagination(totalItems) {
+    const totalPages = Math.ceil(totalItems / pageSize);
+    const pag = document.getElementById('imgPagination');
+    if (totalPages <= 1) {
+        pag.innerHTML = '';
+        return;
+    }
+
+    let html = `
+      <button class="page-btn" ${curPage === 1 ? 'disabled' : ''} onclick="goPage(${curPage - 1})">
+        <i class="fa-solid fa-chevron-left"></i> <span class="hide-mobile" style="margin-left:8px">Previous</span>
+      </button>
+    `;
+    
+    const maxVisible = 5;
+    let startPage = Math.max(1, curPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    
+    if (endPage - startPage + 1 < maxVisible) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        html += `<button class="page-btn ${i === curPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+    }
+
+    html += `
+      <button class="page-btn" ${curPage === totalPages ? 'disabled' : ''} onclick="goPage(${curPage + 1})">
+        <span class="hide-mobile" style="margin-right:8px">Next</span> <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    `;
+    
+    pag.innerHTML = html;
+}
+
+function goPage(n) {
+    curPage = n;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    renderGrid();
+}
+
+function toggleAutoRefresh() {
+    const btn = document.getElementById('refreshBtn');
+    const dot = document.getElementById('refreshDot');
+    const status = document.getElementById('refreshStatus');
+
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+        dot.className = 'status-dot-idle';
+        status.textContent = 'Auto-refresh Off';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-secondary');
+    } else {
+        refreshInterval = setInterval(() => loadImages(true), 30000); // 30s
+        dot.className = 'status-dot-active';
+        status.textContent = 'Auto-refresh On';
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-success');
+    }
+}
+
+function openLightbox(src, id, lat, lon, severity, ts, type) {
+  if (!src) return;
+  const content = document.getElementById('lbContent');
+  if (type === 'video') {
+    content.innerHTML = `<video src="${src}" controls autoplay style="max-width:90vw; max-height:80vh; border-radius:12px"></video>`;
+  } else {
+    content.innerHTML = `<img src="${src}" alt="Report #${id}" style="max-width:90vw; max-height:80vh; border-radius:12px; object-fit:contain"/>`;
+  }
+  
+  const fLat = isNaN(parseFloat(lat)) ? 'Unknown' : parseFloat(lat).toFixed(6);
+  const fLon = isNaN(parseFloat(lon)) ? 'Unknown' : parseFloat(lon).toFixed(6);
+  
+  document.getElementById('lbMeta').innerHTML =
+    `<div style="font-weight:700; margin-bottom:6px; font-size:1rem">Log Entry #${id}</div>
+     <div style="font-size:0.85rem; opacity:0.9; margin-bottom:12px; display:flex; align-items:center; justify-content:center; gap:12px">
+        <span><i class="fa-solid fa-location-dot" style="color:var(--accent)"></i> ${fLat}, ${fLon}</span>
+        <span><i class="fa-regular fa-calendar" style="color:var(--accent)"></i> ${formatDt(ts)}</span>
+     </div>
+     <div style="display:flex; justify-content:center; gap:8px">${severityBadge(severity)}</div>`;
+  document.getElementById('lightbox').classList.add('active');
+}
+
+function closeLightbox(e) {
+  if (!e || (e.target.id === 'lightbox' || e.target.className === 'lightbox-close' || e.target.closest('.lightbox-close'))) {
+    document.getElementById('lbContent').innerHTML = ''; // Stop video
+    document.getElementById('lightbox').classList.remove('active');
+  }
+}
+
+function formatDt(s) { 
+    if (!s) return '—'; 
+    const d = new Date(s); 
+    if (isNaN(d.getTime())) return s; // Return raw string if invalid
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + 
+           d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); 
+}
+
+function severityBadge(s) {
+  const sev = (s || '').toLowerCase();
+  const cls = sev==='high'?'badge-danger':sev==='medium'?'badge-warning':'badge-success';
+  return `<span class="badge ${cls}" style="font-size:.65rem; text-transform:uppercase">${s||'UNKNOWN'}</span>`;
+}
+
+// Initial Load
+loadImages();
+</script>
+{% endblock %}

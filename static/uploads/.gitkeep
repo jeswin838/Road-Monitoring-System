@@ -1,0 +1,2 @@
+Place your pothole images here.
+Flask serves this folder as /static/uploads/<filename>

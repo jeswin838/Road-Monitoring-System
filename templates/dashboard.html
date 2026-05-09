@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Pothole Monitor{% endblock %}
+{% block page_title %}Real-Time Dashboard{% endblock %}
+
+{% block head %}
+<style>
+.dashboard-grid { 
+  display: grid; 
+  grid-template-columns: 1fr 420px; 
+  gap: 20px; 
+  height: calc(100vh - 100px); 
+  margin-top: 10px;
+}
+.map-panel { position: relative; border-radius: 20px; overflow: hidden; min-height: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+#map { width: 100%; height: 100%; min-height: 400px; }
+.right-panel { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 16px; 
+  overflow-y: auto; 
+  padding-right: 8px; 
+  scrollbar-width: thin;
+}
+.map-filters { background: var(--card-bg); border-radius: 16px; padding: 18px; border: 1px solid var(--border); }
+.map-filters h4 { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+.filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-chip { padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 0.78rem; cursor: pointer; transition: all .2s; }
+.filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.map-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--muted); }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+.map-overlay-controls { position: absolute; top: 12px; right: 12px; z-index: 500; display: flex; flex-direction: column; gap: 6px; }
+.map-ctrl-btn { background: var(--card-bg); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 0.78rem; backdrop-filter: blur(8px); white-space: nowrap; transition: all .2s; }
+.map-ctrl-btn:hover, .map-ctrl-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+@media (max-width: 1024px) {
+  .dashboard-grid { grid-template-columns: 1fr; height: auto; display: flex; flex-direction: column; }
+  .map-panel { height: 500px; flex-shrink: 0; }
+  .right-panel { overflow-y: visible; padding-right: 0; }
+}
+
+/* Premium Scrollbar for Right Panel */
+.right-panel::-webkit-scrollbar { width: 5px; }
+.right-panel::-webkit-scrollbar-track { background: transparent; }
+.right-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+.right-panel::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Summary Cards -->
+<div class="stats-cards" id="statsCards">
+  <div class="stat-card" id="card-total">
+    <div class="stat-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"><i class="fa-solid fa-circle-exclamation"></i></div>
+    <div class="stat-info"><span class="stat-label">Total Potholes</span><span class="stat-value" id="stat-total">—</span></div>
+  </div>
+  <div class="stat-card" id="card-today">
+    <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"><i class="fa-solid fa-calendar-day"></i></div>
+    <div class="stat-info"><span class="stat-label">Today's Detections</span><span class="stat-value" id="stat-today">—</span></div>
+  </div>
+  <div class="stat-card" id="card-fixed">
+    <div class="stat-icon" style="background:linear-gradient(135deg,#10b981,#059669)"><i class="fa-solid fa-circle-check"></i></div>
+    <div class="stat-info"><span class="stat-label">Fixed</span><span class="stat-value" id="stat-fixed">—</span></div>
+  </div>
+  <div class="stat-card" id="card-pending">
+    <div class="stat-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706)"><i class="fa-solid fa-clock"></i></div>
+    <div class="stat-info"><span class="stat-label">Pending</span><span class="stat-value" id="stat-pending">—</span></div>
+  </div>
+</div>
+
+<!-- Dashboard Grid: Map + Right Panel -->
+<div class="dashboard-grid">
+  <!-- MAP -->
+  <div class="map-panel glass-card">
+    <div id="map"></div>
+    <!-- Overlay controls -->
+    <div class="map-overlay-controls">
+      <button class="map-ctrl-btn active" id="btnClusters" onclick="toggleClusters()"><i class="fa-solid fa-layer-group"></i> Clusters</button>
+      <button class="map-ctrl-btn" onclick="locateMe()"><i class="fa-solid fa-location-crosshairs"></i> My Location</button>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <!-- Emergency Alerts (Hidden by default) -->
+    <div id="adminEmergencyAlert" style="display:none; margin-bottom:4px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:20px; padding:20px; backdrop-filter: blur(12px); box-shadow: 0 8px 32px rgba(239,68,68,0.15);">
+        <h4 style="color:#ef4444; font-size:0.9rem; font-weight:800; display:flex; align-items:center; gap:10px; margin-bottom:12px; letter-spacing: 0.5px">
+            <i class="fa-solid fa-triangle-exclamation fa-beat"></i> CRITICAL HAZARDS
+        </h4>
+        <div id="emergencyAlertList" style="max-height: 220px; overflow-y: auto; font-size:0.8rem; color:var(--text); display:flex; flex-direction:column; gap:10px; padding-right:6px"></div>
+    </div>
+    <!-- Map filters -->
+    <div class="map-filters glass-card">
+      <h4>Map Filters</h4>
+      <div class="form-group" style="margin-bottom:8px">
+        <label style="font-size:.78rem;color:var(--muted)">Severity</label>
+        <div class="filter-row" id="severityFilters">
+          <button class="filter-chip active" data-val="">All</button>
+          <button class="filter-chip" data-val="High">High</button>
+          <button class="filter-chip" data-val="Medium">Medium</button>
+          <button class="filter-chip" data-val="Low">Low</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label style="font-size:.78rem;color:var(--muted)">Status</label>
+        <div class="filter-row" id="statusFilters">
+          <button class="filter-chip active" data-val="">All</button>
+          <button class="filter-chip" data-val="Pending">Pending</button>
+          <button class="filter-chip" data-val="In Progress">In Progress</button>
+          <button class="filter-chip" data-val="Fixed">Fixed</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label style="font-size:.78rem;color:var(--muted)">Min Confidence: <span id="confLabel">0%</span></label>
+        <input type="range" id="confSlider" min="0" max="1" step="0.05" value="0" class="slider"
+               oninput="document.getElementById('confLabel').textContent=Math.round(this.value*100)+'%'; scheduleRefresh()"/>
+      </div>
+      <div class="map-legend" style="margin-top:10px">
+        <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>High</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#f97316"></span>Medium</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#22c55e"></span>Low</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>User report</span>
+      </div>
+    </div>
+
+    <!-- Live Alert Panel -->
+    <div class="glass-card" style="flex: 1.2; min-height: 200px; overflow:hidden; display:flex; flex-direction:column; padding:18px;">
+      <div class="card-header" style="margin-bottom:14px">
+        <h4 style="font-size:.95rem;font-weight:700"><i class="fa-solid fa-bolt" style="color:#f59e0b"></i> Live System Alerts</h4>
+        <span class="badge badge-warning" id="alertCount" style="padding: 4px 10px; border-radius: 20px">0</span>
+      </div>
+      <div id="liveAlerts" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px; padding-right:4px"></div>
+    </div>
+
+    <!-- User Reports Panel (Admin Only) -->
+    {% if session.get('role') == 'admin' %}
+    <div class="glass-card" style="flex: 1; min-height: 200px; overflow:hidden; display:flex; flex-direction:column; padding:18px;">
+      <div class="card-header" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center">
+        <h4 style="font-size:.95rem;font-weight:700"><i class="fa-solid fa-clipboard-list" style="color:var(--accent)"></i> Citizen Submissions</h4>
+        <a href="{{ url_for('pages.user_reports') }}" class="btn-text" style="font-size:0.75rem; font-weight:600; color:var(--accent); text-decoration:none">View Full List <i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+      <div id="dashboardUserReports" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px; padding-right:4px">
+        <div style="text-align:center; padding:30px; color:var(--muted); font-size:0.85rem">Loading latest reports...</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Reports Viewer Modal -->
+<div id="reportsModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:10000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px)">
+  <div class="glass-card" style="width:100%; max-width:800px; max-height:90vh; display:flex; flex-direction:column; padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1)">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+      <h3 style="font-size:1.2rem; font-weight:700"><i class="fa-solid fa-images" style="color:var(--accent)"></i> Location Reports</h3>
+      <button onclick="closeReportsModal()" style="background:none; border:none; color:var(--text); font-size:1.5rem; cursor:pointer">&times;</button>
+    </div>
+    <div id="reportsContainer" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:12px; overflow-y:auto; flex:1; padding-right:8px">
+      <div style="grid-column:1/-1; text-align:center; padding:40px; color:var(--muted)">Loading reports...</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const MAP_SETTINGS = {
+    lat:  {{ settings.map_center_lat | default(20.5937, true) }},
+    lon:  {{ settings.map_center_lon | default(78.9629, true) }},
+    zoom: {{ settings.map_zoom | default(13, true) }},
+    refresh: {{ settings.auto_refresh_seconds | default(10, true) }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/alerts.js') }}"></script>
+{% endblock %}

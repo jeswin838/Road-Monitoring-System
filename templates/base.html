@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}PotholePro{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"/>
+  {% block head %}{% endblock %}
+</head>
+<body class="dashboard-body">
+
+  <!-- Mobile Sidebar Overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- ════ SIDEBAR ════════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <div class="brand-icon"><i class="fa-solid fa-road"></i></div>
+        <span class="brand-text">PotholePro</span>
+      </div>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Core Monitoring</div>
+        <a href="{{ url_for('pages.dashboard') }}" class="nav-item {% if page=='dashboard' %}active{% endif %}">
+          <i class="fa-solid fa-gauge-high"></i><span>Dashboard</span>
+        </a>
+        <a href="{{ url_for('pages.image_logs') }}" class="nav-item {% if page=='image_logs' %}active{% endif %}">
+          <i class="fa-solid fa-images"></i><span>Image Logs</span>
+        </a>
+        <a href="{{ url_for('pages.navigation') }}" class="nav-item {% if page=='navigation' %}active{% endif %}">
+          <i class="fa-solid fa-route"></i><span>Safe Navigation</span>
+        </a>
+        <a href="{{ url_for('pages.report') }}" class="nav-item {% if page=='report' %}active{% endif %}">
+          <i class="fa-solid fa-camera"></i><span>Report Pothole</span>
+        </a>
+      </div>
+      
+      {% if session.get('role') == 'admin' %}
+      <div class="nav-section">
+        <div class="nav-label">Maintenance</div>
+        <a href="{{ url_for('pages.alerts') }}" class="nav-item {% if page=='alerts' %}active{% endif %}">
+          <i class="fa-solid fa-triangle-exclamation"></i><span>Alerts</span>
+        </a>
+        <a href="{{ url_for('pages.analytics') }}" class="nav-item {% if page=='analytics' %}active{% endif %}">
+          <i class="fa-solid fa-chart-line"></i><span>Analytics</span>
+        </a>
+        <a href="{{ url_for('pages.maintenance') }}" class="nav-item {% if page=='maintenance' %}active{% endif %}">
+          <i class="fa-solid fa-wrench"></i><span>Tracking</span>
+        </a>
+      </div>
+      
+      <div class="nav-section">
+        <div class="nav-label">System</div>
+        <a href="{{ url_for('pages.settings') }}" class="nav-item {% if page=='settings' %}active{% endif %}">
+          <i class="fa-solid fa-gear"></i><span>Settings</span>
+        </a>
+        <a href="{{ url_for('pages.admin') }}" class="nav-item {% if page=='admin' %}active{% endif %}">
+          <i class="fa-solid fa-user-shield"></i><span>Admin Panel</span>
+        </a>
+        <a href="{{ url_for('pages.user_reports') }}" class="nav-item {% if page=='admin_reports' %}active{% endif %}">
+          <i class="fa-solid fa-clipboard-list"></i><span>User Reports</span>
+        </a>
+      </div>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-profile-card">
+        <div class="user-avatar-circle">
+          {{ session.get('name', 'A')[0] | upper }}
+        </div>
+        <div class="user-meta-info">
+          <span class="user-name" id="sidebar-user">{{ session.get('name', 'Admin') }}</span>
+          <span class="user-role-tag">{{ session.get('role', 'Admin') | capitalize }}</span>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()" title="Sign Out">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <script>
+    function handleLogout() {
+      const modal = document.getElementById('logoutModal');
+      if (modal) modal.style.display = 'flex';
+    }
+
+    async function confirmLogout() {
+      await fetch('/api/logout', { method: 'GET' });
+      window.location.href = '/login';
+    }
+
+    function closeLogoutModal() {
+      const modal = document.getElementById('logoutModal');
+      if (modal) modal.style.display = 'none';
+    }
+  </script>
+
+  <!-- ════ TOPBAR ═════════════════════════════════════════════════════════ -->
+  <header class="topbar">
+    <button class="sidebar-toggle" id="sidebarToggle">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+    <h1 class="topbar-title">{% block page_title %}Dashboard{% endblock %}</h1>
+    <div class="topbar-actions">
+      <div class="notification-bell" id="notifBell">
+        <i class="fa-solid fa-bell"></i>
+        <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+      </div>
+      <div class="status-dot" title="System Active"></div>
+    </div>
+  </header>
+
+  <!-- ════ MAIN CONTENT ═══════════════════════════════════════════════════ -->
+  <main class="main-content" id="mainContent">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ════ MODALS ═══════════════════════════════════════════════════════════ -->
+  
+  <!-- Logout Modal -->
+  <div class="modal-overlay" id="logoutModal" style="display:none">
+    <div class="modal-box" style="max-width:320px; text-align:center">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-right-from-bracket"></i> Sign Out</h3>
+        <button class="modal-close" onclick="closeLogoutModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:20px 0; color:var(--muted)">Are you sure you want to sign out?</p>
+      </div>
+      <div class="modal-footer" style="flex-direction:column; gap:8px">
+        <button class="btn btn-primary btn-full" onclick="confirmLogout()">Yes, Sign Out</button>
+        <button class="btn btn-secondary btn-full" onclick="closeLogoutModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Modal -->
+  <div class="modal-overlay" id="deleteModal" style="display:none">
+    <div class="modal-box" style="max-width:340px; text-align:center">
+      <input type="hidden" id="deleteTargetId"/>
+      <div class="modal-header">
+        <h3 style="color:var(--danger)"><i class="fa-solid fa-trash-can"></i> Confirm Delete</h3>
+        <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:20px 0; color:var(--muted)">Are you sure you want to delete this pothole record? This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer" style="flex-direction:column; gap:8px">
+        <button class="btn btn-danger btn-full" onclick="confirmGlobalDelete()">Delete Record</button>
+        <button class="btn btn-secondary btn-full" onclick="closeDeleteModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assign Modal -->
+  <div class="modal-overlay" id="assignModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-user-plus"></i> Assign Worker</h3>
+        <button class="modal-close" id="closeAssignModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="assignPotholeId"/>
+        <div class="form-group">
+          <label>Worker Name</label>
+          <input type="text" id="assignWorkerName" placeholder="Enter worker name" class="form-input"/>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="assignNotes" placeholder="Optional notes" class="form-input" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="closeAssignModal2">Cancel</button>
+        <button class="btn btn-primary" id="confirmAssign">Assign</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ GLOBAL SCRIPTS ═════════════════════════════════════════════════ -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+
+  <!-- Toast notification -->
+  <div id="toastContainer"></div>
+
+  <style>
+    .sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 150;
+      display: none;
+      backdrop-filter: blur(2px);
+    }
+    body.sidebar-open .sidebar-overlay {
+      display: block;
+    }
+  </style>
+</body>
+</html>

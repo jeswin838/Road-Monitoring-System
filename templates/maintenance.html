@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}Maintenance — Pothole Monitor{% endblock %}
+{% block page_title %}Maintenance Tracking{% endblock %}
+
+{% block head %}
+<style>
+.maint-grid { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+
+/* ── Form Styling ───────────────────────────────────────────────────────── */
+.assign-form { 
+  background: var(--card-bg); 
+  border: 1px solid var(--border); 
+  border-radius: 20px; 
+  padding: 24px; 
+  position: sticky;
+  top: 20px;
+}
+.assign-form h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: var(--text); }
+
+/* ── Stats Styling ───────────────────────────────────────────────────────── */
+.stats-container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px; }
+.mini-stat { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 16px; border-radius: 16px; transition: all 0.2s; }
+.mini-stat:hover { border-color: var(--accent); background: rgba(99,102,241,0.05); }
+.mini-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; display: block; margin-bottom: 6px; }
+.mini-val { font-size: 1.4rem; font-weight: 800; color: var(--text); }
+
+/* ── Card Styling ───────────────────────────────────────────────────────── */
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.maint-card { 
+  background: var(--card-bg); 
+  border: 1px solid var(--border); 
+  border-radius: 16px; 
+  padding: 20px; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; 
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.maint-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.maint-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.2); border-color: rgba(99,102,241,0.3); }
+.maint-card:hover::before { opacity: 1; }
+
+.maint-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.pothole-id-tag { font-size: 0.95rem; font-weight: 700; color: var(--text); }
+
+.status-pill { 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px; 
+  padding: 6px 12px; 
+  border-radius: 10px; 
+  font-size: 0.7rem; 
+  font-weight: 700; 
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sp-pending  { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
+.sp-progress { background: rgba(59,130,246,0.1);  color: #3b82f6; border: 1px solid rgba(59,130,246,0.2); }
+.sp-done     { background: rgba(34,197,94,0.1);   color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+
+.worker-info { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+.worker-avatar { 
+  width: 36px; height: 36px; 
+  border-radius: 12px; 
+  background: var(--accent); 
+  display: flex; align-items: center; justify-content: center; 
+  color: #fff; font-size: 0.85rem; font-weight: 700;
+  box-shadow: 0 4px 8px rgba(99,102,241,0.3);
+}
+.worker-name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+
+.maint-meta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.meta-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--muted); }
+.meta-item i { font-size: 0.8rem; opacity: 0.7; }
+
+.maint-notes { 
+  font-size: 0.82rem; 
+  color: var(--text); 
+  background: rgba(0,0,0,0.2); 
+  padding: 10px 14px; 
+  border-radius: 10px; 
+  line-height: 1.5;
+  border-left: 2px solid var(--border);
+}
+
+.action-bar { 
+    display: flex; gap: 8px; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 16px;
+}
+
+/* ── Filter & Search ────────────────────────────────────────────────────── */
+.list-controls { 
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+    background: rgba(255,255,255,0.02);
+    padding: 12px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+}
+
+.section-filter { 
+    display: flex; 
+    gap: 4px; 
+    background: rgba(0,0,0,0.2); 
+    padding: 4px; 
+    border-radius: 14px;
+    border: 1px solid var(--border);
+}
+
+.filter-chip { 
+    padding: 8px 18px; 
+    border-radius: 10px; 
+    border: none; 
+    background: transparent; 
+    color: var(--muted); 
+    font-size: 0.75rem; 
+    font-weight: 700; 
+    cursor: pointer; 
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-chip:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+.filter-chip.active { 
+    background: var(--accent); 
+    color: white; 
+    box-shadow: 0 4px 12px rgba(99,102,241,0.4); 
+}
+
+/* Specific filter colors when active */
+.filter-chip.active[data-val="Pending"] { background: #f59e0b; box-shadow: 0 4px 12px rgba(245,158,11,0.3); }
+.filter-chip.active[data-val="In Progress"] { background: #3b82f6; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+.filter-chip.active[data-val="Fixed"] { background: #22c55e; box-shadow: 0 4px 12px rgba(34,197,94,0.3); }
+
+.search-box { 
+    position: relative; 
+    flex: 1; 
+    max-width: 340px; 
+}
+
+.search-box i { 
+    position: absolute; 
+    left: 16px; 
+    top: 50%; 
+    transform: translateY(-50%); 
+    color: var(--muted); 
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.search-box input { 
+    width: 100%;
+    padding: 12px 16px 12px 46px; 
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-box input:focus { 
+    background: rgba(0,0,0,0.5);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.15), 0 8px 24px rgba(0,0,0,0.3);
+    outline: none;
+}
+
+.search-box input:focus + i {
+    color: var(--accent);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.search-box input::placeholder {
+    color: var(--muted);
+    opacity: 0.5;
+}
+
+@media (max-width: 1100px) {
+  .maint-grid { grid-template-columns: 1fr; }
+  .assign-form { position: static; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="maint-grid">
+  <!-- Assignment Form -->
+  <div class="assign-form glass-card">
+    <h3><i class="fa-solid fa-user-plus" style="color:var(--accent)"></i> Assign Pothole</h3>
+    <div class="form-group">
+      <label>Pothole ID</label>
+      <input type="number" id="mPotholeId" class="form-input" placeholder="e.g. 42"/>
+    </div>
+    <div class="form-group">
+      <label>Worker Name</label>
+      <input type="text" id="mWorkerName" class="form-input" placeholder="Worker name"/>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea id="mNotes" class="form-input" rows="3" placeholder="Optional notes…"></textarea>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="assignWorker()">
+      <i class="fa-solid fa-paper-plane"></i> Assign
+    </button>
+
+    <!-- Quick stats -->
+    <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="mini-stat">
+        <span class="mini-label">Pending</span>
+        <span class="mini-val" id="ms-pending">—</span>
+      </div>
+      <div class="mini-stat">
+        <span class="mini-label">In Progress</span>
+        <span class="mini-val" id="ms-progress">—</span>
+      </div>
+      <div class="mini-stat">
+        <span class="mini-label">Fixed</span>
+        <span class="mini-val" id="ms-done">—</span>
+      </div>
+      <div class="mini-stat">
+        <span class="mini-label">Assigned Total</span>
+        <span class="mini-val" id="ms-total">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assignments List -->
+  <div>
+    <div class="list-controls">
+      <div class="section-filter">
+        <button class="filter-chip active" data-val="" onclick="filterMaint(this)">All</button>
+        <button class="filter-chip" data-val="Pending"     onclick="filterMaint(this)">Pending</button>
+        <button class="filter-chip" data-val="In Progress" onclick="filterMaint(this)">In Progress</button>
+        <button class="filter-chip" data-val="Fixed"       onclick="filterMaint(this)">Fixed</button>
+      </div>
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="maintSearch" class="form-input" placeholder="Search workers or IDs..." oninput="renderMaintCards()"/>
+      </div>
+    </div>
+    
+    <div class="cards-grid" id="maintCards">
+      <!-- Cards rendered here -->
+      <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--muted)">
+        <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+        <p style="margin-top: 12px">Syncing assignments...</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let assignments = [], maintFilter = '';
+
+async function loadAssignments() {
+  const res = await fetch('/api/assignments');
+  assignments = await res.json();
+  updateMiniStats();
+  renderMaintCards();
+}
+
+function updateMiniStats() {
+  const cnt = s => assignments.filter(a => {
+    const status = a.status === 'Completed' ? 'Fixed' : a.status;
+    return status === s;
+  }).length;
+  document.getElementById('ms-pending').textContent  = cnt('Pending');
+  document.getElementById('ms-progress').textContent = cnt('In Progress');
+  document.getElementById('ms-done').textContent     = cnt('Fixed');
+  document.getElementById('ms-total').textContent    = assignments.length;
+}
+
+function filterMaint(el) {
+  document.querySelectorAll('.section-filter .filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  maintFilter = el.dataset.val;
+  renderMaintCards();
+}
+
+function renderMaintCards() {
+  const search = document.getElementById('maintSearch').value.toLowerCase();
+  
+  let list = assignments;
+  if (maintFilter) {
+    list = list.filter(a => {
+        const status = a.status === 'Completed' ? 'Fixed' : a.status;
+        return status === maintFilter;
+    });
+  }
+  if (search) {
+    list = list.filter(a => 
+        a.worker_name.toLowerCase().includes(search) || 
+        `#${a.pothole_id}`.includes(search) ||
+        (a.notes || '').toLowerCase().includes(search)
+    );
+  }
+
+  const container = document.getElementById('maintCards');
+  if (!list.length) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 60px; color: var(--muted); background: var(--card-bg); border-radius: 20px; border: 1px dashed var(--border)">
+        <i class="fa-solid fa-folder-open fa-3x" style="margin-bottom:16px; opacity:0.3"></i>
+        <p>No matching assignments found.</p>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = list.map(a => {
+    const initials = a.worker_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+    const status = a.status === 'Completed' ? 'Fixed' : a.status;
+    const spClass  = status==='Fixed' ? 'sp-done' : status==='In Progress' ? 'sp-progress' : 'sp-pending';
+    const sevColor = a.severity==='High'?'#ef4444':a.severity==='Medium'?'#f97316':'#22c55e';
+    
+    return `
+    <div class="maint-card">
+      <div class="maint-header">
+        <span class="pothole-id-tag">Pothole #${a.pothole_id}</span>
+        <span class="status-pill ${spClass}">${status}</span>
+      </div>
+
+      <div class="worker-info">
+        <div class="worker-avatar">${initials}</div>
+        <div class="worker-name">${a.worker_name}</div>
+      </div>
+
+      ${a.notes ? `<div class="maint-notes">${a.notes}</div>` : ''}
+
+      <div class="maint-meta-row">
+        <div class="meta-item"><i class="fa-regular fa-calendar"></i> ${formatDate(a.assigned_at)}</div>
+        ${a.severity ? `<div class="meta-item"><i class="fa-solid fa-triangle-exclamation" style="color:${sevColor}"></i> ${a.severity}</div>` : ''}
+        ${a.latitude ? `<div class="meta-item"><i class="fa-solid fa-location-dot"></i> ${(+a.latitude).toFixed(4)}, ${(+a.longitude).toFixed(4)}</div>` : ''}
+      </div>
+
+      <div class="action-bar">
+        ${status!=='In Progress' && status!=='Fixed' ? `
+            <button class="btn btn-xs btn-accent" onclick="updateAssign(${a.id},'In Progress')" style="flex:1">
+                <i class="fa-solid fa-play"></i> Start
+            </button>` : ''}
+        ${status!=='Fixed' ? `
+            <button class="btn btn-xs btn-success" onclick="updateAssign(${a.id},'Fixed')" style="flex:1">
+                <i class="fa-solid fa-check"></i> Done
+            </button>` : ''}
+        <button class="btn btn-xs btn-danger" onclick="openDeleteModal(${a.id}, 'assignment')" style="width:36px; padding:0">
+            <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>`; }).join('');
+}
+
+async function assignWorker() {
+  const pid  = document.getElementById('mPotholeId').value;
+  const name = document.getElementById('mWorkerName').value.trim();
+  if (!pid || !name) { showToast('Fill pothole ID and worker name', 'error'); return; }
+  const res = await fetch('/api/assignments', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ pothole_id: +pid, worker_name: name, notes: document.getElementById('mNotes').value })
+  });
+  const d = await res.json();
+  if (res.ok) {
+    showToast('Worker assigned ✓', 'success');
+    document.getElementById('mPotholeId').value = '';
+    document.getElementById('mWorkerName').value = '';
+    document.getElementById('mNotes').value = '';
+    loadAssignments();
+  } else {
+    showToast(d.error || 'Error', 'error');
+  }
+}
+
+async function updateAssign(id, status) {
+  await fetch(`/api/assignments/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status}) });
+  showToast(`Status → ${status}`, 'success');
+  loadAssignments();
+}
+
+function formatDate(s) { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
+
+loadAssignments();
+</script>
+{% endblock %}

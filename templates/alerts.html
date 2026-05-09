@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Alerts — Pothole Monitor{% endblock %}
+{% block page_title %}Alert Management <span id="alertCount" class="badge badge-accent" style="font-size:0.9rem; margin-left:8px; vertical-align:middle">...</span>{% endblock %}
+
+{% block head %}
+<style>
+.filter-toolbar { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 18px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.filter-toolbar .form-group { margin: 0; min-width: 140px; flex: 1; }
+.table-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.data-table th { background: var(--surface); padding: 12px 14px; text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.data-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--surface); }
+.data-table tr.new-row td { animation: highlightRow 3s ease forwards; }
+@keyframes highlightRow { 0%{background:rgba(99,102,241,.25)} 100%{background:transparent} }
+.thumb { width: 50px; height: 50px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform .2s; }
+.thumb:hover { transform: scale(1.1); z-index: 10; }
+.thumb-wrapper { position: relative; width: 50px; height: 50px; cursor: pointer; }
+.img-count-tag { position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.8); color: white; font-size: 10px; padding: 1px 4px; border-radius: 4px; pointer-events: none; font-weight: 700; border: 1px solid rgba(255,255,255,0.2); }
+.thumb-placeholder { width: 50px; height: 50px; background: var(--surface); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 1.2rem; }
+.action-btns { display: flex; gap: 6px; }
+.pagination { display: flex; gap: 6px; justify-content: flex-end; padding: 14px; }
+.page-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; font-size: 0.82rem; transition: all .2s; }
+.page-btn:hover, .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (max-width: 768px) {
+  .filter-toolbar { flex-direction: column; align-items: stretch; }
+  .filter-toolbar .form-group { width: 100%; }
+  .action-btns { flex-direction: column; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Filter Toolbar -->
+<div class="filter-toolbar glass-card">
+  <div class="form-group">
+    <label>Severity</label>
+    <select id="fSeverity" class="form-input" onchange="loadTable()">
+      <option value="">All</option>
+      <option>High</option><option>Medium</option><option>Low</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Status</label>
+    <select id="fStatus" class="form-input" onchange="loadTable()">
+      <option value="">All</option>
+      <option>Pending</option><option>In Progress</option><option>Fixed</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Date From</label>
+    <input type="date" id="fDateFrom" class="form-input" onchange="loadTable()"/>
+  </div>
+  <div class="form-group">
+    <label>Date To</label>
+    <input type="date" id="fDateTo" class="form-input" onchange="loadTable()"/>
+  </div>
+  <div class="form-group" style="flex:0">
+    <label>&nbsp;</label>
+    <button class="btn btn-secondary" onclick="clearFilters()"><i class="fa-solid fa-x"></i> Clear</button>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="table-container glass-card">
+  <div class="table-responsive">
+    <table class="data-table" id="alertsTable">
+      <thead>
+        <tr>
+          <th>ID & Reports</th>
+          <th>Visual</th>
+          <th>Last Seen</th>
+          <th>Lat / Lon</th>
+          <th>Severity</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="alertsBody">
+        <tr><td colspan="9" class="text-center" style="padding:40px;color:var(--muted)">
+          <i class="fa-solid fa-spinner fa-spin"></i> Loading…
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<!-- Image Lightbox -->
+<div class="modal-overlay" id="imgModal" style="display:none" onclick="this.style.display='none'">
+  <div class="modal-box" style="max-width:600px;background:transparent;box-shadow:none">
+    <img id="imgModalSrc" style="max-width:100%;border-radius:12px;max-height:80vh;object-fit:contain"/>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/alerts.js') }}"></script>
+<script>
+let allRows = [], curPage = 1, pageSize = 15;
+
+async function loadTable() {
+  const sev = document.getElementById('fSeverity').value;
+  const stat = document.getElementById('fStatus').value;
+  const dFrom = document.getElementById('fDateFrom').value;
+  const dTo = document.getElementById('fDateTo').value;
+
+  const tbody = document.getElementById('alertsBody');
+  tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="padding:40px;color:var(--muted)">
+    <i class="fa-solid fa-spinner fa-spin"></i> Loading…
+  </td></tr>`;
+
+  try {
+    const url = `/api/alerts?severity=${encodeURIComponent(sev)}&status=${encodeURIComponent(stat)}&date_from=${dFrom}&date_to=${dTo}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error("API Error");
+    allRows = await res.json();
+    document.getElementById('alertCount').innerText = allRows.length;
+  } catch (e) {
+    console.error(e);
+    allRows = [];
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="padding:40px;color:var(--danger)">Failed to load data from server.</td></tr>`;
+    document.getElementById('alertCount').innerText = '0';
+    return;
+  }
+  curPage = 1;
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('alertsBody');
+  const start = (curPage - 1) * pageSize;
+  const page  = allRows.slice(start, start + pageSize);
+
+  if (!page.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center" style="padding:40px;color:var(--muted)">No records found</td></tr>`;
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = page.map(r => `
+    <tr id="row-${r.id}">
+      <td>
+        <div style="font-weight:600; color:var(--text)">#${r.id} pothole</div>
+        <div style="font-size:0.75rem; color:var(--accent)">(${r.report_count} reports)</div>
+      </td>
+      <td>${r.image
+        ? `<div class="thumb-wrapper" onclick='showGallery(${JSON.stringify(r.all_images)})'>
+             <img src="${r.image}" class="thumb" loading="lazy" onerror="this.onerror=null;this.outerHTML='<div class=\\'thumb-placeholder\\' style=\\'color:#ef4444\\'><i class=\\'fa-solid fa-image-slash\\'></i></div>';"/>
+             ${r.all_images.length > 1 ? `<span class="img-count-tag">+${r.all_images.length - 1}</span>` : ''}
+           </div>`
+        : `<div class="thumb-placeholder"><i class="fa-solid fa-image"></i></div>`}</td>
+      <td>
+        <div style="font-size:0.8rem; font-weight:600">${r.last_seen}</div>
+        <div style="font-size:0.7rem; color:var(--muted)">Source: ${r.source}</div>
+      </td>
+      <td style="font-size:.78rem;font-family:monospace">${r.latitude}<br/>${r.longitude}</td>
+      <td>${severityBadge(r.severity)}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td>
+        <div class="action-btns">
+          ${(r.status !== 'Fixed' && r.status !== 'Completed') ? `<button class="btn btn-xs btn-success" onclick="markFixed(${r.id})"><i class="fa-solid fa-check"></i></button>` : ''}
+          <button class="btn btn-xs btn-accent" onclick="openAssignModal(${r.id})"><i class="fa-solid fa-user-plus"></i></button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  // Pagination
+  const totalPages = Math.ceil(allRows.length / pageSize);
+  let pag = '';
+  for (let i = 1; i <= totalPages; i++) {
+    pag += `<button class="page-btn ${i===curPage?'active':''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  document.getElementById('pagination').innerHTML = pag;
+}
+
+function showGallery(images) {
+  if (!images || images.length === 0) return;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
+  
+  overlay.innerHTML = `
+    <button style="position:absolute;top:20px;right:20px;background:none;border:none;color:white;font-size:30px;cursor:pointer" onclick="this.parentElement.remove()">&times;</button>
+    <div id="galleryContainer" style="max-width:90%;max-height:80%;display:flex;overflow-x:auto;gap:20px;padding:20px;scroll-snap-type:x mandatory;scrollbar-width:thin;">
+      ${images.map(src => `<img src="${src}" style="height:500px;border-radius:12px;scroll-snap-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.5)"/>`).join('')}
+    </div>
+    <div style="color:white;margin-top:20px;font-family:Inter,sans-serif">${images.length} Evidence Images (Scroll horizontal)</div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function goPage(n) { curPage = n; renderTable(); }
+
+function showImg(src) {
+  document.getElementById('imgModalSrc').src = src;
+  document.getElementById('imgModal').style.display = 'flex';
+}
+
+async function markFixed(id) {
+  await fetch(`/api/pothole/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status:'Fixed'}) });
+  showToast('Marked as Fixed ✓', 'success');
+  loadTable();
+}
+
+function clearFilters() {
+  ['fSeverity','fStatus','fDateFrom','fDateTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  loadTable();
+}
+
+// Helpers duplicated from main.js for standalone use
+function formatDate(s) { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+function severityBadge(s) { 
+  const sev = (s || '').toLowerCase();
+  const cls = sev==='high'?'badge-danger':sev==='medium'?'badge-warning':'badge-success'; 
+  return `<span class="badge ${cls}">${s||'—'}</span>`; 
+}
+function statusBadge(s) { const cls = s==='Fixed'?'badge-success':s==='In Progress'?'badge-info':'badge-warning'; return `<span class="badge ${cls}">${s||'Pending'}</span>`; }
+function confColor(c) { return c >= 0.75 ? '#22c55e' : c >= 0.5 ? '#f59e0b' : '#ef4444'; }
+
+loadTable();
+</script>
+{% endblock %}

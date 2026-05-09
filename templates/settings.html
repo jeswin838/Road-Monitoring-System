@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Settings — Pothole Monitor{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block head %}
+<style>
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.settings-section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
+.settings-section h3 { font-size: .9rem; font-weight: 600; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.range-display { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-top: 4px; }
+.toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.toggle-row:last-child { border-bottom: none; }
+.toggle-label { font-size: .85rem; }
+.toggle-switch { position: relative; width: 42px; height: 22px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 22px; cursor: pointer; transition: .3s; }
+.toggle-slider:before { content:''; position:absolute; width:18px; height:18px; left:2px; bottom:2px; background:#fff; border-radius:50%; transition:.3s; }
+.toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
+.save-bar { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+@media (max-width: 768px) {
+  .settings-grid { grid-template-columns: 1fr; }
+  .save-bar { flex-direction: column; }
+  .save-bar .btn { width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-grid">
+  <!-- Detection Settings -->
+  <div class="settings-section glass-card">
+    <h3><i class="fa-solid fa-sliders" style="color:#6366f1"></i> Detection Settings</h3>
+    <div class="form-group">
+      <label>Detection Sensitivity (Confidence Threshold)</label>
+      <input type="range" id="sSensitivity" min="0" max="1" step="0.05"
+             value="{{ settings.detection_sensitivity | default(0.5, true) }}" class="slider"
+             oninput="document.getElementById('sLabel').textContent=Math.round(this.value*100)+'%'"/>
+      <div class="range-display">
+        <span>0% (show all)</span>
+        <span id="sLabel">{{ (settings.detection_sensitivity | default(0.5, true) * 100) | int }}%</span>
+        <span>100% (high quality only)</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Alert Threshold (potholes before notification)</label>
+      <input type="number" id="sAlertThreshold" class="form-input"
+             value="{{ settings.alert_threshold | default(10, true) }}" min="1" max="100"/>
+    </div>
+  </div>
+
+  <!-- Map Settings -->
+  <div class="settings-section glass-card">
+    <h3><i class="fa-solid fa-map" style="color:#10b981"></i> Map Settings</h3>
+    <div class="form-group">
+      <label>Default Map Center — Latitude</label>
+      <input type="number" id="sLat" class="form-input" step="0.0001"
+             value="{{ settings.map_center_lat | default(20.5937, true) }}"/>
+    </div>
+    <div class="form-group">
+      <label>Default Map Center — Longitude</label>
+      <input type="number" id="sLon" class="form-input" step="0.0001"
+             value="{{ settings.map_center_lon | default(78.9629, true) }}"/>
+    </div>
+    <div class="form-group">
+      <label>Default Zoom Level (1–18)</label>
+      <input type="number" id="sZoom" class="form-input" min="1" max="18"
+             value="{{ settings.map_zoom | default(13, true) }}"/>
+    </div>
+    <div class="form-group">
+      <label>Auto-Refresh Interval (seconds)</label>
+      <input type="number" id="sRefresh" class="form-input" min="5" max="300"
+             value="{{ settings.auto_refresh_seconds | default(10, true) }}"/>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="settings-section glass-card">
+    <h3><i class="fa-solid fa-bell" style="color:#f59e0b"></i> Notifications</h3>
+    <div class="toggle-row">
+      <span class="toggle-label">Notification Sound</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="sSoundOn" {% if settings.notification_sound | default(1, true) %}checked{% endif %}/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">Browser Push Notifications</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="sBrowserNotif" {% if settings.notification_sound | default(1, true) %}checked{% endif %} onchange="requestNotifPermission()"/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- About -->
+  <div class="settings-section glass-card">
+    <h3><i class="fa-solid fa-circle-info" style="color:#6366f1"></i> About</h3>
+    <p style="color:var(--muted);font-size:.85rem;line-height:1.7">
+      <strong>Smart Pothole Monitoring Dashboard</strong><br/>
+      Version 1.0.0<br/>
+      Stack: Flask · Supabase · SQLite · Leaflet.js · Chart.js<br/>
+      Map: OpenStreetMap<br/>
+    </p>
+    <div style="margin-top:14px">
+      <a href="/api/potholes" target="_blank" class="btn btn-secondary" style="font-size:.78rem"><i class="fa-solid fa-code"></i> View API</a>
+    </div>
+  </div>
+</div>
+
+<div class="save-bar">
+  <button class="btn btn-secondary" onclick="loadSettings()"><i class="fa-solid fa-rotate-right"></i> Reset</button>
+  <button class="btn btn-primary" onclick="saveSettings()"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveSettings() {
+  const payload = {
+    detection_sensitivity: +document.getElementById('sSensitivity').value,
+    alert_threshold:       +document.getElementById('sAlertThreshold').value,
+    map_center_lat:        +document.getElementById('sLat').value,
+    map_center_lon:        +document.getElementById('sLon').value,
+    map_zoom:              +document.getElementById('sZoom').value,
+    auto_refresh_seconds:  +document.getElementById('sRefresh').value,
+    notification_sound:    document.getElementById('sSoundOn').checked ? 1 : 0,
+  };
+  const res = await fetch('/api/settings', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) showToast('Settings saved ✓', 'success');
+  else showToast('Save failed', 'error');
+}
+
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  const s   = await res.json();
+  document.getElementById('sSensitivity').value     = s.detection_sensitivity ?? 0.5;
+  document.getElementById('sLabel').textContent     = Math.round((s.detection_sensitivity ?? 0.5)*100) + '%';
+  document.getElementById('sAlertThreshold').value  = s.alert_threshold ?? 10;
+  document.getElementById('sLat').value             = s.map_center_lat ?? 20.5937;
+  document.getElementById('sLon').value             = s.map_center_lon ?? 78.9629;
+  document.getElementById('sZoom').value            = s.map_zoom ?? 13;
+  document.getElementById('sRefresh').value         = s.auto_refresh_seconds ?? 10;
+  document.getElementById('sSoundOn').checked       = !!s.notification_sound;
+  showToast('Settings restored', 'info');
+}
+
+function requestNotifPermission() {
+  if ('Notification' in window && document.getElementById('sBrowserNotif').checked) {
+    Notification.requestPermission();
+  }
+}
+</script>
+{% endblock %}
