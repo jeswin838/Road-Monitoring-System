@@ -550,14 +550,30 @@ def analyze():
 
         print(f"[FUSION] decision={decision.upper()} | db_type={db_type}")
         if decision == "ignored":
-            reason = "diff too low" if diff <= 10 else ("no AI detection" if not best_detections else "low confidence")
+            boxes = []
+            for d in best_detections:
+                box = d.get("box", [0, 0, 0, 0])
+                boxes.append({
+                    "x1": float(box[0]),
+                    "y1": float(box[1]),
+                    "x2": float(box[2]),
+                    "y2": float(box[3])
+                })
+
+            pothole_flag = len(boxes) > 0
+            reason = "diff too low" if diff <= 10 else (
+                "no AI detection" if not best_detections else "low confidence"
+            )
             print(f"[FUSION] ignored reason: {reason}")
+
             return jsonify({
-                "status":     "ignored",
-                "decision":   decision,
-                "diff":       diff,
-                "spike_ms":   spike_ms,
-                "detections": best_detections
+                "status": "ignored",
+                "decision": decision,
+                "diff": diff,
+                "spike_ms": spike_ms,
+                "detections": best_detections,
+                "pothole": pothole_flag,
+                "boxes": boxes
             })
 
         # ----- 7. Select Primary Detection -----
