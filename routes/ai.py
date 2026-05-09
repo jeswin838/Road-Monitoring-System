@@ -31,7 +31,9 @@ def load_model():
     
     if model is None:
         print("🚀 Loading YOLO model...")
-        model_path = "models/best.pt"
+        print("📂 Current directory:", os.getcwd())
+        print("📂 Files:", os.listdir())
+        model_path = "best.pt"
         
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"❌ MODEL NOT FOUND at {model_path}. Please ensure it exists.")
@@ -340,7 +342,15 @@ def run_inference(m, img: np.ndarray) -> tuple:
 
     try:
         start = time.time()
-        results = m.predict(source=img, conf=0.5, iou=0.45, imgsz=640, device="cpu", verbose=False)
+        print("✅ Starting AI inference...")
+        results = m.predict(
+            source=img,
+            conf=0.5,
+            iou=0.45,
+            imgsz=640,
+            device="cpu",
+            verbose=False
+        )
         elapsed = (time.time() - start) * 1000
         print(f"[AI] Inference: {elapsed:.0f}ms")
         h, w = img.shape[:2]
@@ -365,7 +375,10 @@ def run_inference(m, img: np.ndarray) -> tuple:
                     "center_x_ratio": round(center_x_ratio, 4)
                 })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"[AI] Inference error: {e}")
+        raise e
     return results, detections
 
 
@@ -700,8 +713,16 @@ def user_report():
 
     if ai_available:
         try:
+            print("✅ Starting AI inference...")
             # Lightweight inference configuration for Render deployment.
-            results = m.predict(source=img, conf=0.5, iou=0.45, imgsz=640, device="cpu", verbose=False)
+            results = m.predict(
+                source=img,
+                conf=0.5,
+                iou=0.45,
+                imgsz=640,
+                device="cpu",
+                verbose=False
+            )
             for r in (results or []):
                 if r.boxes is None:
                     continue
@@ -728,11 +749,10 @@ def user_report():
                     if top_detection is None or conf > top_detection["confidence"]:
                         top_detection = det
         except Exception as e:
-            print(f"[USER REPORT] AI inference failed, fallback pending: {e}")
-            ai_available = False
-            results = None
-            allowed_detections = []
-            top_detection = None
+            import traceback
+            traceback.print_exc()
+            print(f"[USER REPORT] AI inference failed: {e}")
+            return jsonify({"error": "AI inference failed", "details": str(e)}), 500
 
     confidence = float(top_detection["confidence"]) if top_detection else 0.0
     pothole_detected = top_detection is not None
