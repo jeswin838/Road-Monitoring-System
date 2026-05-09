@@ -636,13 +636,27 @@ def analyze():
             print(f"[DB] fusion image_logs insert skipped: {e}")
 
         # ----- 10. Response -----
+                # ----- 10. Response -----
+        # Build boxes list from best detections
+        boxes = []
+        for d in best_detections:
+            box = d.get('box', [0, 0, 0, 0])
+            boxes.append({
+                "x1": float(box[0]),
+                "y1": float(box[1]),
+                "x2": float(box[2]),
+                "y2": float(box[3])
+            })
+        pothole_flag = len(boxes) > 0
         return jsonify({
             "status":     "success",
             "decision":   decision,
             "diff":       diff,
             "spike_ms":   spike_ms,
             "detections": best_detections,
-            "image_url":  image_url
+            "image_url":  image_url,
+            "pothole":    pothole_flag,
+            "boxes":      boxes
         })
 
     except Exception as e:
