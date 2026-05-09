@@ -10,7 +10,7 @@ class Config:
     ORS_API_KEY = os.environ.get("ORS_API_KEY")
 
     # ── Flask ─────────────────────────────────────────────────────────────────
-    SECRET_KEY  = os.environ.get("SECRET_KEY",  "pothole_secret_2024")
+    SECRET_KEY  = os.environ.get("SECRET_KEY",  "pothole_secret_prod_2024")
     DEBUG       = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
 
     # ── File uploads ─────────────────────────────────────────────────────────

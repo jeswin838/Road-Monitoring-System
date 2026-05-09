@@ -4,8 +4,6 @@ from flask import Blueprint, request, jsonify, session
 from werkzeug.utils import secure_filename
 from config import Config
 from utils.helpers import is_duplicate, filter_by_confidence, allowed_file
-import cv2
-from ultralytics import YOLO
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -13,100 +11,6 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 def get_supabase():
     from app import supabase
     return supabase
-
-# Global YOLO model for sensor triggers
-sensor_yolo_model = None
-
-def get_sensor_model():
-    global sensor_yolo_model
-    if sensor_yolo_model is None:
-        try:
-            print("[AI] Loading YOLO model for sensor trigger...")
-            sensor_yolo_model = YOLO("best.pt")
-            print("[AI] YOLO model loaded successfully.")
-        except Exception as e:
-            print(f"[AI] Error loading YOLO model: {e}")
-    return sensor_yolo_model
-
-
-# -----------------------------------------------------------------------------
-# POST /api/sensor-trigger (ESP32)
-# -----------------------------------------------------------------------------
-@api_bp.route("/sensor-trigger", methods=["POST"])
-def sensor_trigger():
-    data = request.get_json(silent=True) or {}
-    print(f"[ESP32] Sensor trigger received: {data}")
-
-    image_path = None
-    ai_detected = False
-    confidence = 0.0
-
-    # Hybrid Workflow: Capture image on trigger
-    if data.get("trigger") is True:
-        try:
-            print("[CAM] Opening webcam...")
-            cap = cv2.VideoCapture(0)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                if ret:
-                    # 1. Run AI Verification
-                    model = get_sensor_model()
-                    if model:
-                        results = model.predict(
-                            source=frame,
-                            conf=0.10,
-                            iou=0.20,
-                            imgsz=640,
-                            device="cpu",
-                            verbose=False
-                        )
-                        
-                        # 2. Check if pothole detected
-                        if results and len(results[0].boxes) > 0:
-                            ai_detected = True
-                            confidence = float(results[0].boxes[0].conf[0])
-                            
-                            # Create directory automatically
-                            save_dir = os.path.join("static", "captured")
-                            os.makedirs(save_dir, exist_ok=True)
-
-                            filename = f"frame_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                            full_path = os.path.join(save_dir, filename)
-                            
-                            # Save frame
-                            cv2.imwrite(full_path, frame)
-                            image_path = f"static/captured/{filename}"
-                            print(f"[AI] Pothole detected! Confidence: {confidence:.2f}")
-                            
-                            # Note: Database insertion would require GPS coordinates (lat/lon)
-                            # which are currently not provided by the ESP32 trigger payload.
-                        else:
-                            print("[AI] No pothole detected in captured frame")
-                else:
-                    print("[CAM] Error: Failed to read frame")
-                
-                cap.release()
-                print("[CAM] Camera released")
-            else:
-                print("[CAM] Error: Could not open camera")
-        except Exception as e:
-            print(f"[CAM/AI] Critical Error: {e}")
-
-    # 3. Response based on AI result
-    if ai_detected:
-        return jsonify({
-            "status": "success",
-            "ai_detected": True,
-            "confidence": round(confidence, 4),
-            "image_path": image_path
-        })
-    else:
-        return jsonify({
-            "status": "ignored",
-            "ai_detected": False,
-            "message": "No hazard detected"
-        })
-
 
 # -----------------------------------------------------------------------------
 # GET /api/location-reports?lat=...&lon=...
@@ -462,7 +366,6 @@ def add_pothole():
         if not res.data:
             return jsonify({"error": "Failed to insert record"}), 500
 
-        new_id = res.data[0]["id"]
         print(f"[+] Created new pothole record #{new_id}")
         return jsonify({"id": new_id, "message": "Pothole added"}), 201
     except Exception as e:
@@ -1668,4 +1571,8 @@ def report_action():
     except Exception as e:
         return jsonify({"error": f"Action failed: {str(e)}"}), 500
 
+
+        return jsonify({"message": f"Report {action}d successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Action failed: {str(e)}"}), 500
 

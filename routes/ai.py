@@ -345,8 +345,8 @@ def run_inference(m, img: np.ndarray) -> tuple:
         print("✅ Starting AI inference...")
         results = m.predict(
             source=img,
-            conf=0.10,
-            iou=0.20,
+            conf=0.5,
+            iou=0.45,
             imgsz=640,
             device="cpu",
             verbose=False
@@ -405,22 +405,56 @@ def select_best_frame(frames: list) -> tuple:
 # ================= DECISION LOGIC =================
 def decide_severity(diff: float, sensor: dict, detections: list) -> str:
     """
-    Lightweight Live AI Detection Logic:
-      - If AI detects anything, it's a pothole (severity high)
-      - If sensor is very strong, fallback to high
-      - Otherwise ignore
+    Strict Sensor-Authority Severity Logic:
+      - AI confirms pothole existence (conf >= 0.5 required)
+      - Sensor diff determines severity level
+      - If AI fails, only very strong sensor signal allowed (fallback)
     """
     vib = float(sensor.get("vib", 0) or 0)
+    spike_ms = float(sensor.get("spike_ms", 0) or 0)
 
-    # LIVE CAMERA AI DETECTION
-    if len(detections) > 0:
-        return "high"
+    ai_valid = False
+    best_ratio = 0.0
+    best_conf = 0.0
+    if detections:
+        primary = max(detections, key=lambda d: d.get("bbox_ratio", 0.0))
+        best_ratio = float(primary.get("bbox_ratio", 0.0) or 0.0)
+        best_conf = float(primary.get("confidence", 0.0) or 0.0)
+        ai_valid = best_conf >= 0.50
 
-    # SENSOR FALLBACK
-    if diff > 45 and vib > 0:
-        return "high"
+    # Ignore weak sensor noise if AI is also weak.
+    if diff < 10 and best_conf < 0.50:
+        return "ignored"
 
-    return "ignored"
+    # Sensor-authority baseline severity with ratio-assisted uplift.
+    if diff > 45 or best_ratio > 0.12:
+        sev = "critical"
+    elif diff > 35 or best_ratio > 0.07:
+        sev = "high"
+    elif diff > 20 or best_ratio > 0.03:
+        sev = "medium"
+    elif diff > 10:
+        sev = "low"
+    else:
+        sev = "ignored"
+
+    # If sensor is weak and AI cannot confirm pothole, ignore.
+    if sev == "ignored":
+        if diff > 45 and vib > 0:
+            sev = "high"  # sensor fallback
+        else:
+            return "ignored"
+
+    if not ai_valid and not (diff > 45 and vib > 0):
+        return "ignored"
+
+    # Spike-shape adjustment
+    if diff > 35 and spike_ms < 120:
+        sev = reduce_severity(sev, 1)
+    elif diff > 35 and spike_ms > 180:
+        sev = bump_severity(sev, 1)
+
+    return sev
 
 
 # ================= /analyze ENDPOINT =================
@@ -516,30 +550,14 @@ def analyze():
 
         print(f"[FUSION] decision={decision.upper()} | db_type={db_type}")
         if decision == "ignored":
-            boxes = []
-            for d in best_detections:
-                box = d.get("box", [0, 0, 0, 0])
-                boxes.append({
-                    "x1": float(box[0]),
-                    "y1": float(box[1]),
-                    "x2": float(box[2]),
-                    "y2": float(box[3])
-                })
-
-            pothole_flag = len(boxes) > 0
-            reason = "diff too low" if diff <= 10 else (
-                "no AI detection" if not best_detections else "low confidence"
-            )
+            reason = "diff too low" if diff <= 10 else ("no AI detection" if not best_detections else "low confidence")
             print(f"[FUSION] ignored reason: {reason}")
-
             return jsonify({
-                "status": "ignored",
-                "decision": decision,
-                "diff": diff,
-                "spike_ms": spike_ms,
-                "detections": best_detections,
-                "pothole": pothole_flag,
-                "boxes": boxes
+                "status":     "ignored",
+                "decision":   decision,
+                "diff":       diff,
+                "spike_ms":   spike_ms,
+                "detections": best_detections
             })
 
         # ----- 7. Select Primary Detection -----
@@ -577,26 +595,13 @@ def analyze():
         if duplicate:
             print(f"[FUSION] Duplicate ({duplicate['id']}) → updating")
             update_existing_pothole(supabase, duplicate['id'], decision)
-
-            boxes = []
-            for d in best_detections:
-                box = d.get("box", [0, 0, 0, 0])
-                boxes.append({
-                    "x1": float(box[0]),
-                    "y1": float(box[1]),
-                    "x2": float(box[2]),
-                    "y2": float(box[3])
-                })
-
             return jsonify({
-                "status": "updated",
-                "decision": decision,
-                "diff": diff,
-                "spike_ms": spike_ms,
+                "status":     "updated",
+                "decision":   decision,
+                "diff":       diff,
+                "spike_ms":   spike_ms,
                 "detections": best_detections,
-                "image_url": image_url,
-                "pothole": len(boxes) > 0,
-                "boxes": boxes
+                "image_url":  image_url
             })
 
         # New pothole — insert
@@ -631,27 +636,13 @@ def analyze():
             print(f"[DB] fusion image_logs insert skipped: {e}")
 
         # ----- 10. Response -----
-                # ----- 10. Response -----
-        # Build boxes list from best detections
-        boxes = []
-        for d in best_detections:
-            box = d.get('box', [0, 0, 0, 0])
-            boxes.append({
-                "x1": float(box[0]),
-                "y1": float(box[1]),
-                "x2": float(box[2]),
-                "y2": float(box[3])
-            })
-        pothole_flag = len(boxes) > 0
         return jsonify({
             "status":     "success",
             "decision":   decision,
             "diff":       diff,
             "spike_ms":   spike_ms,
             "detections": best_detections,
-            "image_url":  image_url,
-            "pothole":    pothole_flag,
-            "boxes":      boxes
+            "image_url":  image_url
         })
 
     except Exception as e:
@@ -726,8 +717,8 @@ def user_report():
             # Lightweight inference configuration for Render deployment.
             results = m.predict(
                 source=img,
-                conf=0.10,
-                iou=0.20,
+                conf=0.5,
+                iou=0.45,
                 imgsz=640,
                 device="cpu",
                 verbose=False
